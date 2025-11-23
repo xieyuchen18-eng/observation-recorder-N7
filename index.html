@@ -12,14 +12,13 @@
 body { font-family: Arial, sans-serif; margin:0; padding:10px; }
 .hidden { display:none; }
 button { padding:12px 20px; margin:5px 0; font-size:16px; width:100%; text-align:left; box-sizing:border-box;}
-.select-btn { text-align:left; }
 select, input[type=text], textarea { width:100%; padding:8px; margin:5px 0; font-size:16px; box-sizing:border-box; }
-#menu { position:fixed; top:10px; right:10px; z-index:1000; width:160px; }
-#menu button { font-size:14px; margin:6px 0; width:100%; display:block; }
 .container { max-width:640px; margin:auto; padding-bottom:80px;}
 h2,h3 { text-align:center; margin:8px 0; }
 textarea { height:100px; }
 #violationCount { position:fixed; top:10px; left:10px; font-size:14px; z-index:1000; background:rgba(255,255,255,0.9); padding:6px 8px; border-radius:6px; }
+#menuContainer { position:fixed; top:10px; right:10px; z-index:1000; width:160px; }
+#menuContainer button { font-size:14px; margin:6px 0; width:100%; display:block; }
 .behavior-btn { text-align:left; display:block; padding:12px; margin:6px 0; font-size:16px; border-radius:8px; border:1px solid #ddd; background:#fff; }
 .behavior-btn:active { background:#eef; }
 .small-note { font-size:12px; color:#666; margin-top:6px; text-align:center; }
@@ -27,24 +26,33 @@ textarea { height:100px; }
 </head>
 <body>
 
+<!-- 左上：违规次数 -->
 <div id="violationCount" class="hidden">已记录的次数：0</div>
-<div id="menu" class="hidden" aria-hidden="true">
-  <button onclick="pauseResume()" id="pauseBtn">暂停记录</button>
-  <button onclick="exportZip()" id="exportBtn">停止并导出（ZIP）</button>
+
+<!-- 右上折叠菜单 -->
+<div id="menuContainer" class="hidden">
+  <button id="menuToggleBtn">☰ 菜单</button>
+  <div id="menu" class="hidden">
+    <button onclick="pauseResume()" id="pauseBtn">暂停记录</button>
+    <button onclick="exportZip()" id="exportBtn">停止并导出（ZIP）</button>
+  </div>
 </div>
 
 <div class="container">
 
+  <!-- 登录页 -->
   <div id="loginPage">
     <h2>登录</h2>
     <label>观察人代号:<br><input type="text" id="observer" placeholder="请输入观察人代号"></label>
     <button onclick="login()">登录</button>
-    <p class="small-note">登录后左上会显示已记录违规次数，右上显示导出按钮。</p>
+    <p class="small-note">登录后左上显示已记录次数，右上显示菜单按钮。</p>
   </div>
 
+  <!-- 首页 / 记录信息 -->
   <div id="page1" class="hidden">
     <h2>记录信息</h2>
     <label>观察地址 / 位置 ID：<br><input type="text" id="location" placeholder="例如 Site-01 或 路口A"></label>
+
     <label>地点类型：<br>
     <select id="locationType">
       <option>老居住区</option>
@@ -56,6 +64,7 @@ textarea { height:100px; }
       <option>绿地</option>
       <option>其他</option>
     </select></label>
+
     <label>天气（可多选）：<br>
     <select id="weather" multiple size="5">
       <option>晴</option>
@@ -69,6 +78,7 @@ textarea { height:100px; }
       <option>冰雪</option>
       <option>其他</option>
     </select></label>
+
     <label>道路类型：<br>
     <select id="roadType">
       <option>十字路口</option>
@@ -80,37 +90,44 @@ textarea { height:100px; }
       <option>立交桥路口</option>
       <option>其他</option>
     </select></label>
+
     <button onclick="startRecording()">开始记录</button>
   </div>
 
+  <!-- 拍照选项 -->
   <div id="pagePhoto" class="hidden">
     <h3>是否对该行为拍照？</h3>
     <button onclick="takePhotoThenMenu()">拍照 / 选图</button>
     <button onclick="skipPhotoThenMenu()">跳过拍照</button>
-    <p class="small-note">注：拍照后会立即进入行为选择页面；如果取消拍照也会进入下一步。</p>
+    <p class="small-note">注：拍照后会进入行为选择页面；取消也会进入下一步。</p>
   </div>
 
+  <!-- 一级行为按钮 -->
   <div id="pagePrimary" class="hidden">
     <h3>请选择一级行为</h3>
     <div id="primaryButtons"></div>
   </div>
 
+  <!-- 二级行为按钮 -->
   <div id="pageSecondary" class="hidden">
     <h3>请选择二级行为</h3>
     <div id="secondaryButtons"></div>
   </div>
 
+  <!-- 三级行为按钮 -->
   <div id="pageTertiary" class="hidden">
     <h3>请选择三级行为</h3>
     <div id="tertiaryButtons"></div>
   </div>
 
+  <!-- 多行为确认 -->
   <div id="pageMulti" class="hidden">
     <h3>是否还有其他违规行为要在同一违规ID下记录？</h3>
     <button onclick="multiChoice(true)">是（继续）</button>
     <button onclick="multiChoice(false)">否（结束该违规）</button>
   </div>
 
+  <!-- 笔记页面 -->
   <div id="pageNote" class="hidden">
     <h3>填写备注（可选）</h3>
     <textarea id="note" placeholder="填写简短备注..."></textarea>
@@ -141,31 +158,50 @@ const behaviors = {
   "停车":{"停入路侧停车位":null,"停入人行道":null,"堵塞出入口消防通道":null,"停在路肩":null,"其他":null}
 };
 
-// ---------------- 页面显示控制 ----------------
+// ---------- 页面控制 ----------
 function show(id){
-  const pages = ['page1','pagePhoto','pagePrimary','pageSecondary','pageTertiary','pageMulti','pageNote'];
-  pages.forEach(pid=>document.getElementById(pid).classList.add('hidden'));
-  document.getElementById(id).classList.remove('hidden');
+  document.querySelectorAll('.container > div, #pagePrimary, #pageSecondary, #pageTertiary, #pagePhoto, #pageMulti, #pageNote')
+    .forEach(el=>el.classList.add('hidden'));
+  const el=document.getElementById(id);
+  if(el) el.classList.remove('hidden');
 }
 
-// ---------------- 登录 ----------------
+// ---------- 登录 ----------
 function login(){
   const obs = document.getElementById('observer').value.trim();
   if(!obs){ alert('请输入观察人代号'); return; }
   observerName = obs;
   document.getElementById('violationCount').classList.remove('hidden');
-  document.getElementById('menu').classList.remove('hidden');
+  document.getElementById('menuContainer').classList.remove('hidden');
   show('page1');
 }
 
-// ---------------- 开始记录 ----------------
+// ---------- 开始记录 ----------
 function startRecording(){
   const loc = document.getElementById('location').value.trim();
   if(!loc){ alert('请填写地址/位置ID'); return; }
   show('pagePhoto');
 }
 
-// ---------------- 准备记录 ----------------
+// ---------- 拍照 ----------
+function takePhotoThenMenu(){
+  const input = document.getElementById('cameraInput');
+  input.onchange = function(e){
+    const files = e.target.files;
+    prepareCurrentRecord(Array.from(files));
+    try{ input.value=''; }catch(e){}
+    populatePrimaryButtons();
+    show('pagePrimary');
+  };
+  input.click();
+}
+
+function skipPhotoThenMenu(){
+  prepareCurrentRecord([]);
+  populatePrimaryButtons();
+  show('pagePrimary');
+}
+
 function prepareCurrentRecord(photoFiles){
   currentRecord = {
     violationID: currentViolationID,
@@ -177,169 +213,134 @@ function prepareCurrentRecord(photoFiles){
     roadType: document.getElementById('roadType').value,
     photosFiles: photoFiles || [],
     photosNames: [],
-    primary:'', secondary:'', tertiary:'',
-    note:'', hasMore:false
+    primary:'', secondary:'', tertiary:'', note:'', hasMore:false
   };
 }
 
-// ---------------- 拍照事件绑定 ----------------
-const cameraInput = document.getElementById('cameraInput');
-cameraInput.addEventListener('change', e=>{
-  const files = Array.from(e.target.files);
-  prepareCurrentRecord(files);
-  cameraInput.value = '';
-  populatePrimaryButtons();
-  show('pagePrimary');
-});
-
-function takePhotoThenMenu(){ cameraInput.click(); }
-function skipPhotoThenMenu(){ prepareCurrentRecord([]); populatePrimaryButtons(); show('pagePrimary'); }
-
-// ---------------- 行为按钮 ----------------
+// ---------- 行为选择 ----------
 function populatePrimaryButtons(){
-  const container = document.getElementById('primaryButtons');
-  container.innerHTML = '';
+  const container=document.getElementById('primaryButtons'); container.innerHTML='';
   Object.keys(behaviors).forEach(key=>{
-    const b = document.createElement('button');
-    b.className='behavior-btn';
-    b.textContent = key;
-    b.onclick=()=>selectPrimary(key);
-    container.appendChild(b);
+    const b=document.createElement('button'); b.className='behavior-btn'; b.textContent=key;
+    b.onclick=()=>selectPrimary(key); container.appendChild(b);
   });
 }
-
 function selectPrimary(key){
-  if(!currentRecord){ alert('请先拍照或跳过拍照以开始记录'); return; }
+  if(!currentRecord){ alert('请先拍照或跳过拍照'); return; }
   currentRecord.primary=key;
-  const sec = behaviors[key];
+  const sec=behaviors[key];
   if(sec && Object.keys(sec).length>0){ populateSecondaryButtons(sec); show('pageSecondary'); }
   else{ show('pageMulti'); }
 }
-
 function populateSecondaryButtons(secObj){
-  const container = document.getElementById('secondaryButtons');
-  container.innerHTML='';
+  const container=document.getElementById('secondaryButtons'); container.innerHTML='';
   Object.keys(secObj).forEach(s=>{
-    const b=document.createElement('button');
-    b.className='behavior-btn';
-    b.textContent=s;
-    b.onclick=()=>selectSecondary(s);
-    container.appendChild(b);
+    const b=document.createElement('button'); b.className='behavior-btn'; b.textContent=s;
+    b.onclick=()=>selectSecondary(s); container.appendChild(b);
   });
 }
-
 function selectSecondary(sec){
-  currentRecord.secondary = sec;
-  const tert = behaviors[currentRecord.primary][sec];
+  currentRecord.secondary=sec;
+  const tert=behaviors[currentRecord.primary][sec];
   if(tert && Object.keys(tert).length>0){ populateTertiaryButtons(tert); show('pageTertiary'); }
   else{ show('pageMulti'); }
 }
-
 function populateTertiaryButtons(terObj){
-  const container = document.getElementById('tertiaryButtons');
-  container.innerHTML='';
+  const container=document.getElementById('tertiaryButtons'); container.innerHTML='';
   Object.keys(terObj).forEach(t=>{
-    const b=document.createElement('button');
-    b.className='behavior-btn';
-    b.textContent=t;
-    b.onclick=()=>selectTertiary(t);
-    container.appendChild(b);
+    const b=document.createElement('button'); b.className='behavior-btn'; b.textContent=t;
+    b.onclick=()=>selectTertiary(t); container.appendChild(b);
   });
 }
+function selectTertiary(t){ currentRecord.tertiary=t; show('pageMulti'); }
 
-function selectTertiary(t){
-  currentRecord.tertiary = t;
-  show('pageMulti');
-}
-
-// ---------------- 多行为 ----------------
-function multiChoice(hasMore){
-  currentRecord.hasMore = !!hasMore;
-  show('pageNote');
-}
-
-// ---------------- 保存 ----------------
+function multiChoice(hasMore){ currentRecord.hasMore=!!hasMore; show('pageNote'); }
 function saveRecord(){
   if(paused){ alert('记录已暂停，无法保存'); return; }
-  currentRecord.note = document.getElementById('note').value.trim()||'';
-  currentRecord.photosNames = currentRecord.photosFiles.map((f,i)=>{
-    const ext = f.name.split('.').pop()||'jpg';
-    return `photo_${currentRecord.violationID}_${i+1}.${ext}`;
+  currentRecord.note=document.getElementById('note').value.trim()||'';
+  if(!currentRecord.photosFiles) currentRecord.photosFiles=[];
+  currentRecord.photosNames=currentRecord.photosFiles.map((f,idx)=>{
+    const ext=(f&&f.name&&f.name.split('.').pop())?f.name.split('.').pop().split('?')[0]:'jpg';
+    return `photo_${currentRecord.violationID}_${idx+1}.${ext}`;
   });
-  records.push(currentRecord);
-  updateViolationCount();
+  records.push(currentRecord); updateViolationCount();
   document.getElementById('note').value='';
   if(currentRecord.hasMore){ show('pagePhoto'); }
   else{ currentViolationID++; show('pagePhoto'); }
   currentRecord=null;
 }
 
-// ---------------- 暂停/恢复 ----------------
+// ---------- 暂停/恢复 ----------
 function pauseResume(){
-  paused = !paused;
-  document.getElementById('pauseBtn').textContent = paused?'恢复记录':'暂停记录';
+  paused=!paused;
+  document.getElementById('pauseBtn').textContent = paused ? '恢复记录' : '暂停记录';
   alert(paused?'记录已暂停':'记录已恢复');
 }
 
-// ---------------- 导出 ZIP ----------------
+// ---------- 导出 ZIP ----------
 async function exportZip(){
   if(records.length===0){ alert('当前没有记录需要导出'); return; }
-  const zip = new JSZip();
-  const photosFolder = zip.folder('photos');
-  let csv = '违规ID,时间,观察人,地址/位置ID,地点类型,天气,道路类型,行为1,行为2,行为3,备注,照片文件\n';
-
+  const zip=new JSZip(); const photosFolder=zip.folder('photos');
+  let csv='违规ID,时间,观察人,地址/位置ID,地点类型,天气,道路类型,行为1,行为2,行为3,备注,照片文件\n';
   for(const r of records){
-    const photoFileNames = [];
-    if(r.photosFiles && r.photosFiles.length>0){
+    let photoFileNames=[];
+    if(r.photosFiles&&r.photosFiles.length>0){
       for(let i=0;i<r.photosFiles.length;i++){
-        const file = r.photosFiles[i];
-        const ext = file.name.split('.').pop()||'jpg';
-        const filename = `photo_${r.violationID}_${i+1}.${ext}`;
+        const file=r.photosFiles[i];
+        const ext=(file&&file.name&&file.name.split('.').pop())?file.name.split('.').pop().split('?')[0]:'jpg';
+        const filename=`photo_${r.violationID}_${i+1}.${ext}`;
         photoFileNames.push(filename);
-        try{ photosFolder.file(filename, await file.arrayBuffer()); }
-        catch(e){ 
-          const arr = await new Promise((resolve,reject)=>{
-            const fr = new FileReader();
+        try{
+          const arrayBuffer=await file.arrayBuffer();
+          photosFolder.file(filename,arrayBuffer);
+        }catch{
+          const arrayBuffer=await new Promise((resolve,reject)=>{
+            const fr=new FileReader();
             fr.onload=()=>resolve(fr.result);
             fr.onerror=()=>reject(fr.error);
             fr.readAsArrayBuffer(file);
           });
-          photosFolder.file(filename, arr);
+          photosFolder.file(filename,arrayBuffer);
         }
       }
     }
-    const esc = v=>`"${String(v||'').replace(/"/g,'""')}"`;
-    csv += [esc(r.violationID),esc(r.time),esc(r.observer),esc(r.location),esc(r.locationType),
-            esc(r.weather),esc(r.roadType),esc(r.primary),esc(r.secondary),esc(r.tertiary),
-            esc(r.note),esc(photoFileNames.join(';'))].join(',')+'\n';
+    const esc=v=>`"${String(v||'').replace(/"/g,'""')}"`;
+    csv+=[esc(r.violationID),esc(r.time),esc(r.observer),esc(r.location),esc(r.locationType),esc(r.weather),
+      esc(r.roadType),esc(r.primary||''),esc(r.secondary||''),esc(r.tertiary||''),esc(r.note||''),esc(photoFileNames.join(';'))].join(',')+'\n';
   }
-
   zip.file('records.csv',csv);
-  const content = await zip.generateAsync({type:'blob'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(content);
-  a.download='records_export.zip';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(a.href);
+  const content=await zip.generateAsync({type:'blob'});
+  const url=URL.createObjectURL(content);
+  const a=document.createElement('a'); a.href=url; a.download='records_export.zip'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
   alert('ZIP 已生成并下载');
-  records=[]; currentViolationID=1;
-  updateViolationCount();
-  show('page1');
+  records=[]; currentViolationID=1; updateViolationCount(); show('page1');
 }
 
-// ---------------- 更新计数 ----------------
 function updateViolationCount(){
-  const unique = [...new Set(records.map(r=>r.violationID))];
-  document.getElementById('violationCount').innerText = `已记录的违规次数：${unique.length}`;
+  const unique=[...new Set(records.map(r=>r.violationID))];
+  document.getElementById('violationCount').innerText=`已记录的违规次数：${unique.length}`;
 }
 
-// ---------------- 初始化 ----------------
-document.addEventListener('DOMContentLoaded',()=>{
+// ---------- 菜单折叠 ----------
+document.getElementById('menuToggleBtn').addEventListener('click', ()=>{
+  const menu=document.getElementById('menu');
+  menu.classList.toggle('hidden');
+});
+
+document.addEventListener('DOMContentLoaded', ()=>{
   show('loginPage');
 });
-</script>
 
+window.takePhotoThenMenu=takePhotoThenMenu;
+window.skipPhotoThenMenu=skipPhotoThenMenu;
+window.startRecording=startRecording;
+window.login=login;
+window.pauseResume=pauseResume;
+window.multiChoice=multiChoice;
+window.saveRecord=saveRecord;
+window.exportZip=exportZip;
+window.populatePrimaryButtons=populatePrimaryButtons;
+
+</script>
 </body>
 </html>
