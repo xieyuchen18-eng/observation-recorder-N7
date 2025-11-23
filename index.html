@@ -73,6 +73,8 @@ textarea { height:100px; }
       <option>小到中雨</option>
       <option>大雨以上</option>
       <option>雾霾</option>
+      <option>冰雪</option>
+      <option>其他</option>
     </select></label>
 
     <label>道路类型：<br>
@@ -92,7 +94,7 @@ textarea { height:100px; }
 
   <!-- 拍照选项 -->
   <div id="pagePhoto" class="hidden">
-    <h3>是否拍照？</h3>
+    <h3>是否对该行为拍照？</h3>
     <button onclick="takePhotoThenMenu()">拍照 / 选图</button>
     <button onclick="skipPhotoThenMenu()">跳过拍照</button>
     <p class="small-note">注：拍照后会立即进入行为选择页面；如果取消拍照也会进入下一步。</p>
@@ -145,8 +147,8 @@ let currentViolationID = 1;         // 当前违规ID（多行为时保持不变
 /* behaviors 保持你原来的结构（中文一级/二级/三级） */
 const behaviors = {
   "闯红灯": {"左转":{"立即闯灯":null,"等候后闯灯":null},"直行":{"立即闯灯":null,"等候后闯灯":null},"右转":{"干扰其他方向":null}},
-  "头盔违规":{"无头盔":null,"佩戴运动头盔":null,"不正确佩戴头盔":null},
-  "逆行":{"Counter Flow on Regular Road":null,"Counter Flow on One-way Road":null,"Counter Flow at Intersection":null},
+  "头盔违规":{"无头盔 No Helmet":null,"佩戴运动头盔":null,"不正确佩戴头盔":null},
+  "逆行":{"常规道路逆行Counter Flow on Regular Road":null,"单行线逆行Counter Flow on One-way Road":null,"路口逆行 Counter Flow at Intersection":null},
   "号牌违章":{"遮挡":{"轻微遮挡":null,"完全遮挡":null},"故意损坏":null,"无牌照":null,"其他":null},
   "通行道路违规":{"违规行驶非机动车道":null,"违规行驶人行道":null,"违规行驶机动车道":{"不使用最右道通行":null,"驶入公交道":null,"不驶入最左侧车道左转掉头":null,"其他":null}},
   "装载":{"超高":null,"超宽":null,"超长":null},
@@ -489,3 +491,4 @@ window.populatePrimaryButtons = populatePrimaryButtons;
 
 </body>
 </html>
+
