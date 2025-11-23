@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>交通违规记录系统（含ZIP导出）</title>
+
+<!-- JSZip CDN -->
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+
+<style>
+body { font-family: Arial, sans-serif; margin:0; padding:10px; }
+.hidden { display:none; }
+button { padding:12px 20px; margin:5px 0; font-size:16px; width:100%; text-align:left; box-sizing:border-box;}
+.select-btn { text-align:left; }
+select, input[type=text], textarea { width:100%; padding:8px; margin:5px 0; font-size:16px; box-sizing:border-box; }
+#menu { position:fixed; top:10px; right:10px; z-index:1000; width:160px; }
+#menu button { font-size:14px; margin:6px 0; width:100%; display:block; }
+.container { max-width:640px; margin:auto; padding-bottom:80px;}
+h2,h3 { text-align:center; margin:8px 0; }
+textarea { height:100px; }
+#violationCount { position:fixed; top:10px; left:10px; font-size:14px; z-index:1000; background:rgba(255,255,255,0.9); padding:6px 8px; border-radius:6px; }
+.behavior-btn { text-align:left; display:block; padding:12px; margin:6px 0; font-size:16px; border-radius:8px; border:1px solid #ddd; background:#fff; }
+.behavior-btn:active { background:#eef; }
+.small-note { font-size:12px; color:#666; margin-top:6px; text-align:center; }
+</style>
+</head>
+<body>
+
+<!-- 左上：违规次数（登录后显示） -->
+<div id="violationCount" class="hidden">已记录的违规次数：0</div>
+
+<!-- 右上固定菜单（登录后显示） -->
+<div id="menu" class="hidden" aria-hidden="true">
+  <button onclick="pauseResume()" id="pauseBtn">暂停记录</button>
+  <button onclick="exportZip()" id="exportBtn">停止并导出（ZIP）</button>
+</div>
+
+<div class="container">
+
+  <!-- 登录页 -->
+  <div id="loginPage">
+    <h2>登录</h2>
+    <label>观察人代号:<br><input type="text" id="observer" placeholder="请输入观察人代号"></label>
+    <button onclick="login()">登录</button>
+    <p class="small-note">登录后左上会显示已记录违规次数，右上显示导出按钮。</p>
+  </div>
+
+  <!-- 首页 / 记录信息 -->
+  <div id="page1" class="hidden">
+    <h2>记录信息</h2>
+    <label>观察地址 / 位置 ID：<br><input type="text" id="location" placeholder="例如 Site-01 或 路口A"></label>
+
+    <label>地点类型：<br>
+    <select id="locationType">
+      <option>老居住区</option>
+      <option>新居住区</option>
+      <option>商业区</option>
+      <option>交通枢纽</option>
+      <option>生活辅助设施（学校、医院等）</option>
+      <option>工业区</option>
+      <option>绿地</option>
+      <option>其他</option>
+    </select></label>
+
+    <label>天气（可多选）：<br>
+    <select id="weather" multiple size="5">
+      <option>晴</option>
+      <option>多云</option>
+      <option>阴</option>
+      <option>阵雨</option>
+      <option>雷暴</option>
+      <option>小到中雨</option>
+      <option>大雨以上</option>
+      <option>雾霾</option>
+    </select></label>
+
+    <label>道路类型：<br>
+    <select id="roadType">
+      <option>十字路口</option>
+      <option>T型路口</option>
+      <option>直线道路</option>
+      <option>单行线</option>
+      <option>单车道公路</option>
+      <option>多车道公路</option>
+      <option>立交桥路口</option>
+      <option>其他</option>
+    </select></label>
+
+    <button onclick="startRecording()">开始记录</button>
+  </div>
+
+  <!-- 拍照选项 -->
+  <div id="pagePhoto" class="hidden">
+    <h3>是否拍照？</h3>
+    <button onclick="takePhotoThenMenu()">拍照 / 选图</button>
+    <button onclick="skipPhotoThenMenu()">跳过拍照</button>
+    <p class="small-note">注：拍照后会立即进入行为选择页面；如果取消拍照也会进入下一步。</p>
+  </div>
+
+  <!-- 一级行为按钮 -->
+  <div id="pagePrimary" class="hidden">
+    <h3>请选择一级行为</h3>
+    <div id="primaryButtons"></div>
+  </div>
+
+  <!-- 二级行为按钮 -->
+  <div id="pageSecondary" class="hidden">
+    <h3>请选择二级行为</h3>
+    <div id="secondaryButtons"></div>
+  </div>
+
+  <!-- 三级行为按钮 -->
+  <div id="pageTertiary" class="hidden">
+    <h3>请选择三级行为</h3>
+    <div id="tertiaryButtons"></div>
+  </div>
+
+  <!-- 多行为确认 -->
+  <div id="pageMulti" class="hidden">
+    <h3>是否还有其他违规行为要在同一违规ID下记录？</h3>
+    <button onclick="multiChoice(true)">是（继续）</button>
+    <button onclick="multiChoice(false)">否（结束该违规）</button>
+  </div>
+
+  <!-- 笔记页面 -->
+  <div id="pageNote" class="hidden">
+    <h3>填写备注（可选）</h3>
+    <textarea id="note" placeholder="填写简短备注..."></textarea>
+    <button onclick="saveRecord()">保存记录</button>
+  </div>
+
+</div>
+
+<!-- 隐藏的 file input，用于拍照/选图（capture 属性会打开相机） -->
+<input id="cameraInput" type="file" accept="image/*" capture="environment" multiple style="display:none">
+
+<script>
+/* ---------- 状态 ---------- */
+let records = [];                   // 所有已保存记录
+let currentRecord = null;           // 当前正在记录的对象
+let paused = false;
+let observerName = '';
+let currentViolationID = 1;         // 当前违规ID（多行为时保持不变）
+/* behaviors 保持你原来的结构（中文一级/二级/三级） */
+const behaviors = {
+  "闯红灯": {"左转":{"立即闯灯":null,"等候后闯灯":null},"直行":{"立即闯灯":null,"等候后闯灯":null},"右转":{"干扰其他方向":null}},
+  "头盔违规":{"无头盔":null,"佩戴运动头盔":null,"不正确佩戴头盔":null},
+  "逆行":{"Counter Flow on Regular Road":null,"Counter Flow on One-way Road":null,"Counter Flow at Intersection":null},
+  "号牌违章":{"遮挡":{"轻微遮挡":null,"完全遮挡":null},"故意损坏":null,"无牌照":null,"其他":null},
+  "通行道路违规":{"违规行驶非机动车道":null,"违规行驶人行道":null,"违规行驶机动车道":{"不使用最右道通行":null,"驶入公交道":null,"不驶入最左侧车道左转掉头":null,"其他":null}},
+  "装载":{"超高":null,"超宽":null,"超长":null},
+  "干扰驾驶":{"使用手持设备":null,"外放音乐":null,"吸烟":null,"其他":null},
+  "等候位置":{"停止线后":null,"人行横道上":null,"路口其他区域":null},
+  "其他行为":{"鸣笛":null,"转弯不打信号灯":null,"其他":null},
+  "停车":{"停入路侧停车位":null,"停入人行道":null,"堵塞出入口消防通道":null,"停在路肩":null,"其他":null}
+};
+
+/* ---------- 页面显示控制 ---------- */
+function show(id){ document.querySelectorAll('.container > div, #pagePrimary, #pageSecondary, #pageTertiary, #pagePhoto, #pageMulti, #pageNote').forEach(el=>{ if(el.id) el.classList.add('hidden'); }); 
+  // show specific
+  const el = document.getElementById(id);
+  if(el) el.classList.remove('hidden');
+}
+
+/* ---------- 登录 ---------- */
+function login(){
+  const obs = document.getElementById('observer').value.trim();
+  if(!obs){ alert('请输入观察人代号'); return; }
+  observerName = obs;
+  // 显示计数与菜单
+  document.getElementById('violationCount').classList.remove('hidden');
+  document.getElementById('menu').classList.remove('hidden');
+  // 显示记录信息页面
+  show('page1');
+}
+
+/* ---------- 开始记录 ---------- */
+function startRecording(){
+  const loc = document.getElementById('location').value.trim();
+  if(!loc){ alert('请填写地址/位置ID'); return; }
+  // show photo choice
+  show('pagePhoto');
+}
+
+/* ---------- 拍照流程：点击后打开系统相机/图库 ---------- */
+function takePhotoThenMenu(){
+  const input = document.getElementById('cameraInput');
+  // 一次性绑定 onchange 回调，确保每次都能触发
+  input.onchange = function(e){
+    const files = e.target.files;
+    // create record with files (file objects) - don't await reading
+    prepareCurrentRecord(Array.from(files));
+    // 清空 input 值，方便下次触发
+    try{ input.value = ''; }catch(e){}
+    // 立即进入行为选择（不等待文件读取完成）
+    populatePrimaryButtons();
+    show('pagePrimary');
+  };
+  // 调用相机/图库
+  input.click();
+}
+
+function skipPhotoThenMenu(){
+  prepareCurrentRecord([]);
+  populatePrimaryButtons();
+  show('pagePrimary');
+}
+
+/* 将页面上的信息写入 currentRecord（并包含照片文件对象数组） */
+function prepareCurrentRecord(photoFiles){
+  currentRecord = {
+    violationID: currentViolationID,
+    time: new Date().toISOString(),
+    observer: observerName,
+    location: document.getElementById('location').value.trim(),
+    locationType: document.getElementById('locationType').value,
+    weather: Array.from(document.getElementById('weather').selectedOptions).map(o=>o.value).join(','),
+    roadType: document.getElementById('roadType').value,
+    photosFiles: photoFiles || [],
+    photosNames: [],  // 填在保存/导出时
+    primary: '', secondary: '', tertiary: '',
+    note: '',
+    hasMore: false
+  };
+}
+
+/* ---------- 行为按钮：一级/二级/三级（纵向按钮） ---------- */
+function populatePrimaryButtons(){
+  const container = document.getElementById('primaryButtons');
+  container.innerHTML = '';
+  Object.keys(behaviors).forEach(key=>{
+    const b = document.createElement('button');
+    b.className = 'behavior-btn';
+    b.textContent = key;
+    b.onclick = ()=>{ selectPrimary(key); };
+    container.appendChild(b);
+  });
+}
+
+/* 选择一级 */
+function selectPrimary(key){
+  if(!currentRecord) { alert('请先拍照或跳过拍照以开始记录'); return; }
+  currentRecord.primary = key;
+  // 二级准备
+  const sec = behaviors[key];
+  if(sec && Object.keys(sec).length>0){
+    populateSecondaryButtons(sec);
+    show('pageSecondary');
+  } else {
+    // 若无二级，进入多行为确认
+    show('pageMulti');
+  }
+}
+
+/* 填充二级按钮 */
+function populateSecondaryButtons(secObj){
+  const container = document.getElementById('secondaryButtons');
+  container.innerHTML = '';
+  Object.keys(secObj).forEach(s=>{
+    const b = document.createElement('button');
+    b.className = 'behavior-btn';
+    b.textContent = s;
+    b.onclick = ()=>{ selectSecondary(s); };
+    container.appendChild(b);
+  });
+}
+
+/* 选择二级 */
+function selectSecondary(sec){
+  currentRecord.secondary = sec;
+  const tert = behaviors[currentRecord.primary][sec];
+  if(tert && Object.keys(tert).length>0){
+    populateTertiaryButtons(tert);
+    show('pageTertiary');
+  } else {
+    show('pageMulti');
+  }
+}
+
+/* 填充三级按钮 */
+function populateTertiaryButtons(terObj){
+  const container = document.getElementById('tertiaryButtons');
+  container.innerHTML = '';
+  Object.keys(terObj).forEach(t=>{
+    const b = document.createElement('button');
+    b.className = 'behavior-btn';
+    b.textContent = t;
+    b.onclick = ()=>{ selectTertiary(t); };
+    container.appendChild(b);
+  });
+}
+
+/* 选择三级 */
+function selectTertiary(t){
+  currentRecord.tertiary = t;
+  show('pageMulti');
+}
+
+/* 多行为确认（是否继续属于同一违规ID） */
+function multiChoice(hasMore){
+  currentRecord.hasMore = !!hasMore;
+  show('pageNote');
+}
+
+/* 保存当前记录（并根据 hasMore 决定是否递增 violationID） */
+function saveRecord(){
+  // 暂停时不能保存
+  if(paused){ alert('记录已暂停，无法保存'); return; }
+
+  currentRecord.note = document.getElementById('note').value.trim() || '';
+  // 标准化：如果 photosFiles 未定义，设为 []
+  if(!currentRecord.photosFiles) currentRecord.photosFiles = [];
+  // 生成预期的照片文件名（CSV中会记录这些文件名）
+  currentRecord.photosNames = currentRecord.photosFiles.map((f, idx) => {
+    // 尝试提取扩展名
+    const ext = (f && f.name && f.name.split('.').pop()) ? f.name.split('.').pop().split('?')[0] : 'jpg';
+    return `photo_${currentRecord.violationID}_${idx+1}.${ext}`;
+  });
+
+  records.push(currentRecord);
+  updateViolationCount();
+
+  // 清空备注输入
+  document.getElementById('note').value = '';
+
+  // 决定是否保持同一个 violationID（hasMore=true）或递增（hasMore=false）
+  if(currentRecord.hasMore){
+    // 继续使用当前ViolationID；直接回到拍照页面以记录下一个行为（属于同一违规ID）
+    show('pagePhoto');
+  } else {
+    // 结束当前违规组，增加ID，回到拍照页面准备下一个违规组
+    currentViolationID++;
+    show('pagePhoto');
+  }
+  // reset currentRecord to ensure next prepareCurrentRecord will overwrite
+  currentRecord = null;
+}
+
+/* 顶部暂停/恢复 */
+function pauseResume(){
+  paused = !paused;
+  document.getElementById('pauseBtn').textContent = paused ? '恢复记录' : '暂停记录';
+  alert(paused ? '记录已暂停' : '记录已恢复');
+}
+
+/* ---------- 导出 ZIP（CSV + 照片） ---------- */
+async function exportZip(){
+  if(records.length === 0){
+    alert('当前没有记录需要导出');
+    return;
+  }
+  // 禁用导出按钮防止重复点击
+  document.getElementById('exportBtn').disabled = true;
+  document.getElementById('exportBtn').textContent = '正在生成 ZIP...';
+
+  try{
+    const zip = new JSZip();
+    const photosFolder = zip.folder('photos');
+
+    // 生成 CSV 行： include photos filenames (semicolon separated)
+    let csv = '违规ID,时间,观察人,地址/位置ID,地点类型,天气,道路类型,行为1,行为2,行为3,备注,照片文件\n';
+    for(const r of records){
+      // add photo files to zip (if any)
+      let photoFileNames = [];
+      if(Array.isArray(r.photosFiles) && r.photosFiles.length > 0){
+        for(let i=0;i<r.photosFiles.length;i++){
+          const file = r.photosFiles[i];
+          // Derive extension / filename
+          const ext = (file && file.name && file.name.split('.').pop()) ? file.name.split('.').pop().split('?')[0] : 'jpg';
+          const filename = `photo_${r.violationID}_${i+1}.${ext}`;
+          photoFileNames.push(filename);
+          // arrayBuffer -> add
+          try{
+            // modern browsers: file.arrayBuffer()
+            const arrayBuffer = await file.arrayBuffer();
+            photosFolder.file(filename, arrayBuffer);
+          }catch(err){
+            // fallback: use FileReader
+            const arrayBuffer = await new Promise((resolve,reject)=>{
+              const fr = new FileReader();
+              fr.onload = ()=>resolve(fr.result);
+              fr.onerror = ()=>reject(fr.error);
+              fr.readAsArrayBuffer(file);
+            });
+            photosFolder.file(filename, arrayBuffer);
+          }
+        }
+      }
+      // CSV row - escape commas and quotes
+      const esc = v => `"${String(v||'').replace(/"/g,'""')}"`;
+      csv += [
+        esc(r.violationID),
+        esc(r.time),
+        esc(r.observer),
+        esc(r.location),
+        esc(r.locationType),
+        esc(r.weather),
+        esc(r.roadType),
+        esc(r.primary || ''),
+        esc(r.secondary || ''),
+        esc(r.tertiary || ''),
+        esc(r.note || ''),
+        esc(photoFileNames.join(';'))
+      ].join(',') + '\n';
+    }
+
+    // add CSV
+    zip.file('records.csv', csv);
+
+    // generate zip blob
+    const content = await zip.generateAsync({type:'blob'});
+
+    // trigger download
+    const url = URL.createObjectURL(content);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'records_export.zip';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+
+    alert('ZIP 已生成并开始下载（或保存在手机的下载/文件中）');
+    // 可选择清空 records 或保留，这里我们清空以避免重复导出
+    records = [];
+    currentViolationID = 1;
+    updateViolationCount();
+    show('page1'); // 返回首页
+  }catch(err){
+    console.error('导出ZIP出错：', err);
+    alert('导出失败：' + (err && err.message ? err.message : String(err)));
+  }finally{
+    document.getElementById('exportBtn').disabled = false;
+    document.getElementById('exportBtn').textContent = '停止并导出（ZIP）';
+  }
+}
+
+/* ---------- 更新左上计数 ---------- */
+function updateViolationCount(){
+  const unique = [...new Set(records.map(r=>r.violationID))];
+  document.getElementById('violationCount').innerText = `已记录的违规次数：${unique.length}`;
+}
+
+/* ---------- 帮助函数：从拍照按钮跳转（兼容取消） ---------- */
+/* 使用 takePhotoThenMenu() -> cameraInput onchange 会调用 prepareCurrentRecord */
+function skipPhotoThenMenu(){
+  prepareCurrentRecord([]);
+  populatePrimaryButtons();
+  show('pagePrimary');
+}
+
+/* ensure primary/secondary/tertiary population accessible from other flows */
+function populatePrimaryButtons(){ 
+  const container = document.getElementById('primaryButtons');
+  container.innerHTML='';
+  Object.keys(behaviors).forEach(key=>{
+    const b = document.createElement('button');
+    b.className = 'behavior-btn';
+    b.textContent = key;
+    b.onclick = ()=>selectPrimary(key);
+    container.appendChild(b);
+  });
+}
+
+/* When page loads, show login only */
+document.addEventListener('DOMContentLoaded', ()=>{ 
+  // hide everything except login
+  document.getElementById('page1').classList.add('hidden');
+  document.getElementById('pagePhoto').classList.add('hidden');
+  document.getElementById('pagePrimary').classList.add('hidden');
+  document.getElementById('pageSecondary').classList.add('hidden');
+  document.getElementById('pageTertiary').classList.add('hidden');
+  document.getElementById('pageMulti').classList.add('hidden');
+  document.getElementById('pageNote').classList.add('hidden');
+});
+
+/* Expose some functions to window for inline buttons (already used) */
+window.takePhotoThenMenu = takePhotoThenMenu;
+window.skipPhotoThenMenu = skipPhotoThenMenu;
+window.startRecording = startRecording;
+window.login = login;
+window.pauseResume = pauseResume;
+window.multiChoice = multiChoice;
+window.saveRecord = saveRecord;
+window.exportZip = exportZip;
+window.populatePrimaryButtons = populatePrimaryButtons;
+</script>
+
+</body>
+</html>
